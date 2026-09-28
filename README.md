@@ -24,3 +24,7 @@ claude mcp add penpot-a -t http "https://penpot-mcp.pavlokostiuk.cloud/mcp?userT
 A token is a secret: anyone holding one can run code in the Penpot window connected with it. Every route is behind a Traefik IP allowlist (`PENPOT_MCP_ALLOW_IPS`), because `/a` and `/b` serve their tokens to whoever can fetch them.
 
 Dokploy environment: `PENPOT_MCP_TOKEN_A` … `PENPOT_MCP_TOKEN_E` (must equal the `userToken` in the matching Claude MCP server) and `PENPOT_MCP_ALLOW_IPS` (e.g. `203.0.113.7/32`).
+
+## Browser
+
+Run the slot tabs in their own Chrome: `./penpot-chrome.sh`. It starts a separate profile with background throttling off, because a normal Chrome slows a hidden Penpot tab to 30s+ per call after about five minutes and the MCP calls time out. Log in to Penpot once in that window, then open one tab per slot and start its `Penpot MCP (<slot>)` plugin.
