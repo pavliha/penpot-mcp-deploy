@@ -1,0 +1,83 @@
+diff --git a/mcp/packages/plugin/index.html b/mcp/packages/plugin/index.html
+index de2ff5853..1ca99bada 100644
+--- a/mcp/packages/plugin/index.html
++++ b/mcp/packages/plugin/index.html
+@@ -16,6 +16,11 @@
+                 <span id="status-text" class="body-s">Not connected</span>
+             </div>
+ 
++            <label class="session-token-field">
++                <span class="body-s">Session token</span>
++                <input id="session-token" type="password" autocomplete="off" spellcheck="false" />
++            </label>
++
+             <button type="button" id="connect-btn" data-appearance="primary" data-handler="connect-mcp">
+                 Connect MCP Server
+             </button>
+diff --git a/mcp/packages/plugin/src/main.ts b/mcp/packages/plugin/src/main.ts
+index 4cd19e194..ce4e9ed8b 100644
+--- a/mcp/packages/plugin/src/main.ts
++++ b/mcp/packages/plugin/src/main.ts
+@@ -43,6 +43,26 @@ const executedCodeEl = document.getElementById("executed-code") as HTMLTextAreaE
+ const copyCodeBtn = document.getElementById("copy-code-btn") as HTMLButtonElement;
+ const connectBtn = document.getElementById("connect-btn") as HTMLButtonElement;
+ const disconnectBtn = document.getElementById("disconnect-btn") as HTMLButtonElement;
++const sessionTokenInput = document.getElementById("session-token") as HTMLInputElement;
++const SESSION_TOKEN_KEY = "penpot-mcp-session-token";
++
++const readStoredToken = (): string => {
++    try {
++        return sessionStorage.getItem(SESSION_TOKEN_KEY) ?? "";
++    } catch {
++        return "";
++    }
++};
++
++const storeToken = (token: string): void => {
++    try {
++        sessionStorage.setItem(SESSION_TOKEN_KEY, token);
++    } catch {
++        return;
++    }
++};
++
++sessionTokenInput.value = readStoredToken();
+ const versionWarningEl = document.getElementById("version-warning") as HTMLElement;
+ const versionWarningTextEl = document.getElementById("version-warning-text") as HTMLElement;
+ 
+@@ -291,7 +311,9 @@ copyCodeBtn?.addEventListener("click", () => {
+ });
+ 
+ connectBtn?.addEventListener("click", () => {
+-    connectToMcpServer();
++    const token = sessionTokenInput.value.trim();
++    storeToken(token);
++    connectToMcpServer(undefined, token || undefined);
+ });
+ 
+ disconnectBtn?.addEventListener("click", () => {
+diff --git a/mcp/packages/plugin/src/style.css b/mcp/packages/plugin/src/style.css
+index 53e0a9da3..f911d6dc8 100644
+--- a/mcp/packages/plugin/src/style.css
++++ b/mcp/packages/plugin/src/style.css
+@@ -183,6 +183,20 @@ details[open] > .collapsible-header .collapsible-arrow {
+ 
+ /* ── Action buttons ──────────────────────────────────────────────── */
+ 
++.session-token-field {
++    display: flex;
++    flex-direction: column;
++    gap: var(--spacing-4);
++    margin-top: var(--spacing-4);
++}
++
++.session-token-field input {
++    width: 100%;
++    box-sizing: border-box;
++    padding: 6px 8px;
++    font: inherit;
++}
++
+ #connect-btn,
+ #disconnect-btn {
+     width: 100%;

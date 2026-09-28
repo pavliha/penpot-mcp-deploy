@@ -1,0 +1,46 @@
+services:
+  penpot-mcp-server:
+    build:
+      context: .
+      target: server
+      args:
+        WS_URI: wss://penpot-mcp.pavlokostiuk.cloud/ws
+    restart: unless-stopped
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      - "traefik.http.routers.penpot-mcp-api.rule=Host(`penpot-mcp.pavlokostiuk.cloud`) && (PathPrefix(`/mcp`) || PathPrefix(`/sse`) || PathPrefix(`/messages`))"
+      - "traefik.http.routers.penpot-mcp-api.entrypoints=websecure"
+      - "traefik.http.routers.penpot-mcp-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.penpot-mcp-api.service=penpot-mcp-api"
+      - "traefik.http.services.penpot-mcp-api.loadbalancer.server.port=4401"
+      - "traefik.http.routers.penpot-mcp-ws.rule=Host(`penpot-mcp.pavlokostiuk.cloud`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.penpot-mcp-ws.entrypoints=websecure"
+      - "traefik.http.routers.penpot-mcp-ws.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.penpot-mcp-ws.service=penpot-mcp-ws"
+      - "traefik.http.services.penpot-mcp-ws.loadbalancer.server.port=4402"
+
+  penpot-mcp-plugin:
+    build:
+      context: .
+      target: plugin
+      args:
+        WS_URI: wss://penpot-mcp.pavlokostiuk.cloud/ws
+    restart: unless-stopped
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      - "traefik.http.routers.penpot-mcp-plugin.rule=Host(`penpot-mcp.pavlokostiuk.cloud`)"
+      - "traefik.http.routers.penpot-mcp-plugin.priority=1"
+      - "traefik.http.routers.penpot-mcp-plugin.entrypoints=websecure"
+      - "traefik.http.routers.penpot-mcp-plugin.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.penpot-mcp-plugin.service=penpot-mcp-plugin"
+      - "traefik.http.services.penpot-mcp-plugin.loadbalancer.server.port=80"
+
+networks:
+  dokploy-network:
+    external: true
