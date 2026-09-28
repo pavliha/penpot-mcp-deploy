@@ -7,7 +7,7 @@ The upstream plugin connects without a token in local mode. `plugin-session-toke
 | Path | Serves |
 |---|---|
 | `/manifest.json` | patched plugin, asks for a session token |
-| `/a/manifest.json`, `/b/manifest.json` | same plugin with slot a / b token baked in; connects on open |
+| `/a/manifest.json` … `/e/manifest.json` | same plugin with that slot's token baked in; connects on open |
 | `/mcp`, `/sse`, `/messages` | MCP server |
 | `/ws` | plugin WebSocket |
 
@@ -21,4 +21,4 @@ claude mcp add penpot-a -t http "https://penpot-mcp.pavlokostiuk.cloud/mcp?userT
 
 A token is a secret: anyone holding one can run code in the Penpot window connected with it. Every route is behind a Traefik IP allowlist (`PENPOT_MCP_ALLOW_IPS`), because `/a` and `/b` serve their tokens to whoever can fetch them.
 
-Dokploy environment: `PENPOT_MCP_TOKEN_A`, `PENPOT_MCP_TOKEN_B` (must equal the `userToken` in the matching Claude MCP server) and `PENPOT_MCP_ALLOW_IPS` (e.g. `203.0.113.7/32`).
+Dokploy environment: `PENPOT_MCP_TOKEN_A` … `PENPOT_MCP_TOKEN_E` (must equal the `userToken` in the matching Claude MCP server) and `PENPOT_MCP_ALLOW_IPS` (e.g. `203.0.113.7/32`).

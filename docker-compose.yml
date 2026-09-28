@@ -33,6 +33,9 @@ services:
         WS_URI: wss://penpot-mcp.pavlokostiuk.cloud/ws
         TOKEN_A: ${PENPOT_MCP_TOKEN_A}
         TOKEN_B: ${PENPOT_MCP_TOKEN_B}
+        TOKEN_C: ${PENPOT_MCP_TOKEN_C}
+        TOKEN_D: ${PENPOT_MCP_TOKEN_D}
+        TOKEN_E: ${PENPOT_MCP_TOKEN_E}
     restart: unless-stopped
     networks:
       - dokploy-network
