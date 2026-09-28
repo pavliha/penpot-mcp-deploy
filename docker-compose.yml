@@ -14,11 +14,14 @@ services:
       - "traefik.http.routers.penpot-mcp-api.rule=Host(`penpot-mcp.pavlokostiuk.cloud`) && (PathPrefix(`/mcp`) || PathPrefix(`/sse`) || PathPrefix(`/messages`))"
       - "traefik.http.routers.penpot-mcp-api.entrypoints=websecure"
       - "traefik.http.routers.penpot-mcp-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.penpot-mcp-api.middlewares=penpot-mcp-allow"
+      - "traefik.http.middlewares.penpot-mcp-allow.ipallowlist.sourcerange=${PENPOT_MCP_ALLOW_IPS}"
       - "traefik.http.routers.penpot-mcp-api.service=penpot-mcp-api"
       - "traefik.http.services.penpot-mcp-api.loadbalancer.server.port=4401"
       - "traefik.http.routers.penpot-mcp-ws.rule=Host(`penpot-mcp.pavlokostiuk.cloud`) && PathPrefix(`/ws`)"
       - "traefik.http.routers.penpot-mcp-ws.entrypoints=websecure"
       - "traefik.http.routers.penpot-mcp-ws.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.penpot-mcp-ws.middlewares=penpot-mcp-allow"
       - "traefik.http.routers.penpot-mcp-ws.service=penpot-mcp-ws"
       - "traefik.http.services.penpot-mcp-ws.loadbalancer.server.port=4402"
 
@@ -28,6 +31,8 @@ services:
       target: plugin
       args:
         WS_URI: wss://penpot-mcp.pavlokostiuk.cloud/ws
+        TOKEN_A: ${PENPOT_MCP_TOKEN_A}
+        TOKEN_B: ${PENPOT_MCP_TOKEN_B}
     restart: unless-stopped
     networks:
       - dokploy-network
@@ -38,6 +43,7 @@ services:
       - "traefik.http.routers.penpot-mcp-plugin.priority=1"
       - "traefik.http.routers.penpot-mcp-plugin.entrypoints=websecure"
       - "traefik.http.routers.penpot-mcp-plugin.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.penpot-mcp-plugin.middlewares=penpot-mcp-allow"
       - "traefik.http.routers.penpot-mcp-plugin.service=penpot-mcp-plugin"
       - "traefik.http.services.penpot-mcp-plugin.loadbalancer.server.port=80"
 
