@@ -1,0 +1,339 @@
+diff --git a/mcp/packages/plugin/index.html b/mcp/packages/plugin/index.html
+index de2ff5853..1ca99bada 100644
+--- a/mcp/packages/plugin/index.html
++++ b/mcp/packages/plugin/index.html
+@@ -16,6 +16,11 @@
+                 <span id="status-text" class="body-s">Not connected</span>
+             </div>
+ 
++            <label class="session-token-field">
++                <span class="body-s">Session token</span>
++                <input id="session-token" type="password" autocomplete="off" spellcheck="false" />
++            </label>
++
+             <button type="button" id="connect-btn" data-appearance="primary" data-handler="connect-mcp">
+                 Connect MCP Server
+             </button>
+diff --git a/mcp/packages/plugin/src/main.ts b/mcp/packages/plugin/src/main.ts
+index 4cd19e194..e4d6e30c9 100644
+--- a/mcp/packages/plugin/src/main.ts
++++ b/mcp/packages/plugin/src/main.ts
+@@ -43,6 +43,28 @@ const executedCodeEl = document.getElementById("executed-code") as HTMLTextAreaE
+ const copyCodeBtn = document.getElementById("copy-code-btn") as HTMLButtonElement;
+ const connectBtn = document.getElementById("connect-btn") as HTMLButtonElement;
+ const disconnectBtn = document.getElementById("disconnect-btn") as HTMLButtonElement;
++const sessionTokenInput = document.getElementById("session-token") as HTMLInputElement;
++const SESSION_TOKEN_KEY = "penpot-mcp-session-token";
++
++const readStoredToken = (): string => {
++    try {
++        return sessionStorage.getItem(SESSION_TOKEN_KEY) ?? "";
++    } catch {
++        return "";
++    }
++};
++
++const storeToken = (token: string): void => {
++    try {
++        sessionStorage.setItem(SESSION_TOKEN_KEY, token);
++    } catch {
++        return;
++    }
++};
++
++sessionTokenInput.value = PENPOT_MCP_BAKED_TOKEN || readStoredToken();
++const tokenField = sessionTokenInput.closest(".session-token-field") as HTMLElement | null;
++if (PENPOT_MCP_BAKED_TOKEN && tokenField) tokenField.hidden = true;
+ const versionWarningEl = document.getElementById("version-warning") as HTMLElement;
+ const versionWarningTextEl = document.getElementById("version-warning-text") as HTMLElement;
+ 
+@@ -144,14 +166,41 @@ function sendHeartbeat(): boolean {
+     return false;
+ }
+ 
+-/** Starts heartbeat emission for the active WebSocket. */
++const HEARTBEAT_WORKER_SOURCE =
++    "self.onmessage = (e) => { clearInterval(self.timer); self.timer = e.data > 0 ? setInterval(() => postMessage(0), e.data) : null; };";
++
++const heartbeatWorker: Worker | null = (() => {
++    try {
++        const url = URL.createObjectURL(new Blob([HEARTBEAT_WORKER_SOURCE], { type: "text/javascript" }));
++        const worker = new Worker(url);
++        worker.onmessage = () => sendHeartbeat();
++        return worker;
++    } catch {
++        return null;
++    }
++})();
++
++const holdKeepAliveLock = (): void => {
++    try {
++        void navigator.locks?.request("penpot-mcp-keepalive", () => new Promise<void>(() => undefined));
++    } catch {
++        return;
++    }
++};
++
++/** Starts heartbeat emission for the active WebSocket; a worker timer survives background-tab throttling. */
+ function startHeartbeat(): void {
+     stopHeartbeat();
+-    heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
++    if (heartbeatWorker) {
++        heartbeatWorker.postMessage(HEARTBEAT_INTERVAL_MS);
++    } else {
++        heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
++    }
+ }
+ 
+ /** Stops heartbeat emission for the active WebSocket. */
+ function stopHeartbeat(): void {
++    heartbeatWorker?.postMessage(0);
+     if (heartbeatTimer !== null) {
+         clearInterval(heartbeatTimer);
+         heartbeatTimer = null;
+@@ -291,7 +340,9 @@ copyCodeBtn?.addEventListener("click", () => {
+ });
+ 
+ connectBtn?.addEventListener("click", () => {
+-    connectToMcpServer();
++    const token = sessionTokenInput.value.trim();
++    storeToken(token);
++    connectToMcpServer(undefined, token || undefined);
+ });
+ 
+ disconnectBtn?.addEventListener("click", () => {
+@@ -359,4 +410,9 @@ document.addEventListener("visibilitychange", () => {
+     }
+ });
+ 
++holdKeepAliveLock();
+ parent.postMessage({ type: "ui-initialized" }, "*");
++
++if (PENPOT_MCP_BAKED_TOKEN) {
++    connectToMcpServer(undefined, PENPOT_MCP_BAKED_TOKEN);
++}
+diff --git a/mcp/packages/plugin/src/plugin.ts b/mcp/packages/plugin/src/plugin.ts
+index 502116707..eb4d3c480 100644
+--- a/mcp/packages/plugin/src/plugin.ts
++++ b/mcp/packages/plugin/src/plugin.ts
+@@ -6,7 +6,7 @@ import { formatTaskError } from "./ErrorUtils";
+  * indicates whether the plugin is running in an environment with the Penpot-integrated remote MCP server
+  * enabled (as opposed to a local server used with the explicitly loaded plugin)
+  */
+-const isIntegratedRemoteMcp = !!mcp;
++const isIntegratedRemoteMcp = false;
+ 
+ /**
+  * Extracts the major.minor.patch prefix from a version string.
+@@ -19,7 +19,7 @@ function extractVersionPrefix(version: string): string {
+     return match ? match[1] : version;
+ }
+ 
+-mcp?.setMcpStatus("connecting");
++isIntegratedRemoteMcp && mcp?.setMcpStatus("connecting");
+ 
+ /**
+  * Registry of all available task handlers.
+@@ -62,7 +62,7 @@ penpot.ui.onMessage<string | { id: string; type?: string; status?: string; task:
+             });
+         }
+     } else if (typeof message === "object" && message.type === "update-connection-status") {
+-        mcp?.setMcpStatus(message.status || "unknown");
++        isIntegratedRemoteMcp && mcp?.setMcpStatus(message.status || "unknown");
+     } else if (typeof message === "object" && message.task && message.id) {
+         // Handle plugin tasks submitted by the MCP server
+         handlePluginTaskRequest(message).catch((error) => {
+@@ -106,7 +106,7 @@ async function handlePluginTaskRequest(request: { id: string; task: string; para
+     }
+ }
+ 
+-if (mcp) {
++if (isIntegratedRemoteMcp && mcp) {
+     mcp.on("disconnect", async () => {
+         penpot.ui.sendMessage({
+             type: "stop-server",
+diff --git a/mcp/packages/plugin/src/style.css b/mcp/packages/plugin/src/style.css
+index 53e0a9da3..f911d6dc8 100644
+--- a/mcp/packages/plugin/src/style.css
++++ b/mcp/packages/plugin/src/style.css
+@@ -183,6 +183,20 @@ details[open] > .collapsible-header .collapsible-arrow {
+ 
+ /* ── Action buttons ──────────────────────────────────────────────── */
+ 
++.session-token-field {
++    display: flex;
++    flex-direction: column;
++    gap: var(--spacing-4);
++    margin-top: var(--spacing-4);
++}
++
++.session-token-field input {
++    width: 100%;
++    box-sizing: border-box;
++    padding: 6px 8px;
++    font: inherit;
++}
++
+ #connect-btn,
+ #disconnect-btn {
+     width: 100%;
+diff --git a/mcp/packages/plugin/src/vite-env.d.ts b/mcp/packages/plugin/src/vite-env.d.ts
+index 252ff654a..d2a68bb54 100644
+--- a/mcp/packages/plugin/src/vite-env.d.ts
++++ b/mcp/packages/plugin/src/vite-env.d.ts
+@@ -3,3 +3,4 @@
+ declare const IS_MULTI_USER_MODE: boolean;
+ declare const PENPOT_MCP_WEBSOCKET_URL: string;
+ declare const PENPOT_MCP_VERSION: string;
++declare const PENPOT_MCP_BAKED_TOKEN: string;
+diff --git a/mcp/packages/plugin/vite.config.ts b/mcp/packages/plugin/vite.config.ts
+index 9e79ca7f7..0255151ab 100644
+--- a/mcp/packages/plugin/vite.config.ts
++++ b/mcp/packages/plugin/vite.config.ts
+@@ -8,6 +8,7 @@ const rootPkg = require("../../package.json");
+ let WS_URI = process.env.WS_URI || "http://localhost:4402";
+ let SERVER_HOST = process.env.PENPOT_MCP_PLUGIN_SERVER_HOST ?? "localhost";
+ let MCP_VERSION = JSON.stringify(rootPkg.version);
++let BAKED_TOKEN = process.env.BAKED_TOKEN ?? "";
+ 
+ console.log("PENPOT_MCP_WEBSOCKET_URL:", JSON.stringify(WS_URI));
+ console.log("PENPOT_MCP_VERSION:", MCP_VERSION);
+@@ -44,5 +45,6 @@ export default defineConfig({
+     define: {
+         PENPOT_MCP_WEBSOCKET_URL: JSON.stringify(WS_URI),
+         PENPOT_MCP_VERSION: MCP_VERSION,
++        PENPOT_MCP_BAKED_TOKEN: JSON.stringify(BAKED_TOKEN),
+     },
+ });
+diff --git a/mcp/packages/server/src/PluginBridge.test.ts b/mcp/packages/server/src/PluginBridge.test.ts
+index b0d15936b..5106a5a8f 100644
+--- a/mcp/packages/server/src/PluginBridge.test.ts
++++ b/mcp/packages/server/src/PluginBridge.test.ts
+@@ -1,45 +1,30 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { assertPluginResponsive, HEARTBEAT_STALE_THRESHOLD_MS } from "./PluginBridge";
++import { pluginLivenessProblem, HEARTBEAT_STALE_THRESHOLD_MS } from "./PluginBridge";
+ 
+-test("passes for a responsive connection with a recent heartbeat", () => {
++test("reports no problem for a recent heartbeat", () => {
+     const now = 1_000_000;
+-    assert.doesNotThrow(() => assertPluginResponsive({ frozen: false, lastHeartbeat: now - 5_000 }, now));
++    assert.equal(pluginLivenessProblem({ frozen: false, lastHeartbeat: now - 5_000 }, now), null);
+ });
+ 
+-test("passes when the heartbeat age is exactly at the threshold", () => {
++test("reports no problem when the heartbeat age is exactly at the threshold", () => {
+     const now = 1_000_000;
+-    const lastHeartbeat = now - HEARTBEAT_STALE_THRESHOLD_MS;
+-    assert.doesNotThrow(() => assertPluginResponsive({ frozen: false, lastHeartbeat }, now));
++    assert.equal(pluginLivenessProblem({ frozen: false, lastHeartbeat: now - HEARTBEAT_STALE_THRESHOLD_MS }, now), null);
+ });
+ 
+-test("throws a frozen-specific error when the tab reported it is being frozen", () => {
++test("reports a freeze when the tab said it is being frozen", () => {
+     const now = 1_000_000;
+-    assert.throws(() => assertPluginResponsive({ frozen: true, lastHeartbeat: now }, now), /has been frozen/);
++    assert.match(pluginLivenessProblem({ frozen: true, lastHeartbeat: now }, now) ?? "", /froze/);
+ });
+ 
+-test("throws a suspended error when no heartbeat has arrived within the threshold", () => {
++test("reports the heartbeat age, in seconds, when it is stale", () => {
+     const now = 1_000_000;
+-    const lastHeartbeat = now - (HEARTBEAT_STALE_THRESHOLD_MS + 1);
+-    assert.throws(
+-        () => assertPluginResponsive({ frozen: false, lastHeartbeat }, now),
+-        /appears to be suspended by the browser/
+-    );
+-});
+-
+-test("includes the heartbeat age, in seconds, in the suspended error", () => {
+-    const now = 1_000_000;
+-    const lastHeartbeat = now - 45_000;
+-    assert.throws(() => assertPluginResponsive({ frozen: false, lastHeartbeat }, now), /no heartbeat for 45s/);
++    assert.match(pluginLivenessProblem({ frozen: false, lastHeartbeat: now - 45_000 }, now) ?? "", /no heartbeat for 45s/);
+ });
+ 
+ test("honours a custom stale threshold", () => {
+     const now = 1_000_000;
+     const lastHeartbeat = now - 2_000;
+-
+-    assert.doesNotThrow(() => assertPluginResponsive({ frozen: false, lastHeartbeat }, now));
+-    assert.throws(
+-        () => assertPluginResponsive({ frozen: false, lastHeartbeat }, now, 1_000),
+-        /appears to be suspended by the browser/
+-    );
++    assert.equal(pluginLivenessProblem({ frozen: false, lastHeartbeat }, now), null);
++    assert.match(pluginLivenessProblem({ frozen: false, lastHeartbeat }, now, 1_000) ?? "", /no heartbeat for 2s/);
+ });
+diff --git a/mcp/packages/server/src/PluginBridge.ts b/mcp/packages/server/src/PluginBridge.ts
+index 305f5dc35..25eb9e88a 100644
+--- a/mcp/packages/server/src/PluginBridge.ts
++++ b/mcp/packages/server/src/PluginBridge.ts
+@@ -34,31 +34,23 @@ interface ClientConnection extends PluginLivenessState {
+ }
+ 
+ /**
+- * Throws if the plugin tab cannot currently run tasks.
++ * Describes why a plugin tab may be unable to run tasks right now, or returns null when it looks live.
+  *
+- * A socket can stay open while the page event loop is paused, so task dispatch must check
+- * plugin-level liveness before sending work.
++ * Tasks are still dispatched when this returns a problem: a message arriving over the socket can
++ * wake a throttled tab, so refusing up front turns a slow task into a failed one.
+  */
+-export function assertPluginResponsive(
++export function pluginLivenessProblem(
+     state: PluginLivenessState,
+     now: number,
+     staleThresholdMs: number = HEARTBEAT_STALE_THRESHOLD_MS
+-): void {
++): string | null {
+     if (state.frozen) {
+-        throw new Error(
+-            `The Penpot plugin tab has been frozen by the browser and cannot run tasks. ` +
+-                `Please click/focus the Penpot tab to wake it, then retry.`
+-        );
++        return "the Penpot plugin tab reported that the browser froze it";
+     }
+-
+     const heartbeatAge = now - state.lastHeartbeat;
+-    if (heartbeatAge > staleThresholdMs) {
+-        throw new Error(
+-            `The Penpot plugin tab appears to be suspended by the browser (no heartbeat for ` +
+-                `${Math.round(heartbeatAge / 1000)}s). Please click/focus the Penpot tab to wake it, ` +
+-                `then retry.`
+-        );
+-    }
++    return heartbeatAge > staleThresholdMs
++        ? `the Penpot plugin tab has sent no heartbeat for ${Math.round(heartbeatAge / 1000)}s`
++        : null;
+ }
+ 
+ /**
+@@ -407,8 +399,10 @@ export class PluginBridge {
+                 throw new Error(`Plugin instance is disconnected. Task could not be sent.`);
+             }
+ 
+-            // the socket can be open while browser-throttled plugin JS cannot run tasks
+-            assertPluginResponsive(target, Date.now());
++            const livenessProblem = pluginLivenessProblem(target, Date.now());
++            if (livenessProblem) {
++                this.logger.warn(`Dispatching task ${task.id} although ${livenessProblem}`);
++            }
+ 
+             // register the task for result correlation, then send over the socket
+             this.pendingTasks.set(task.id, task);
+@@ -420,7 +414,11 @@ export class PluginBridge {
+             if (
+                 this.rejectPendingTask(
+                     task.id,
+-                    new Error(`Task ${task.id} timed out after ${this.taskTimeoutSecs} seconds`)
++                    new Error(
++                        `Task ${task.id} timed out after ${this.taskTimeoutSecs} seconds. ` +
++                            `If the Penpot tab is in the background, the browser may have suspended it; ` +
++                            `bring it to the front and retry.`
++                    )
+                 )
+             ) {
+                 onTimeout?.();

@@ -11,8 +11,8 @@ WORKDIR /src
 RUN git clone -q --filter=blob:none --sparse --no-checkout https://github.com/penpot/penpot.git . \
  && git sparse-checkout set mcp \
  && git checkout -q "$PENPOT_COMMIT"
-COPY plugin-session-token.patch /tmp/
-RUN git apply /tmp/plugin-session-token.patch
+COPY penpot-mcp.patch /tmp/
+RUN git apply /tmp/penpot-mcp.patch
 WORKDIR /src/mcp
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 WS_URI=$WS_URI
 RUN pnpm -r install --frozen-lockfile && pnpm run build
